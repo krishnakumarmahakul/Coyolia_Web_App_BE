@@ -30,61 +30,40 @@ app.use(limiter);
 // Static files
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Enhanced router loader with debugging
-const loadRouterWithDebug = (routePath) => {
-  console.log(`Attempting to load router from: ${path.resolve(__dirname, routePath)}`);
-  
+// Route loaders
+const loadRouter = (routePath) => {
   try {
-    // Clear cache first to ensure fresh load
     delete require.cache[require.resolve(routePath)];
-    
     const router = require(routePath);
-    console.log(`Successfully required ${routePath}`);
     
     if (typeof router !== 'function' || !router.stack) {
-      console.error('Loaded router is invalid. Structure:', router);
       throw new Error(`Invalid router from ${routePath}`);
     }
     
-    console.log(`Router from ${routePath} is valid`);
     return router;
   } catch (err) {
-    console.error(`CRITICAL ERROR loading ${routePath}:`, err);
-    console.error('Full error stack:', err.stack);
+    console.error(`Error loading ${routePath}:`, err);
     process.exit(1);
   }
 };
 
-// Load routes with debugging and validation
-console.log('Before loading blogRoutes');
-const blogRoutes = loadRouterWithDebug('./routes/blogRoutes');
-console.log('Blog routes loaded:', blogRoutes);
+// Load and mount routes
+const routeConfigs = [
+  { path: './routes/authRoutes', basePath: '/api/v1/auth' },
+  { path: './routes/blogRoutes', basePath: '/api/blogs' },
+  { path: './routes/appointmentRoutes', basePath: '/api/appointments' }
+];
 
-console.log('Before loading appointmentRoutes');
-const appointmentRoutes = loadRouterWithDebug('./routes/appointmentRoutes');
-console.log('Appointment routes loaded:', appointmentRoutes);
-
-// Mount routes with additional validation
-try {
-  console.log('Mounting blogRoutes...');
-  if (typeof blogRoutes === 'function' && blogRoutes.stack) {
-    app.use('/api/blogs', blogRoutes);
-    console.log('blogRoutes mounted successfully');
-  } else {
-    throw new Error('blogRoutes is not a valid Express router');
+routeConfigs.forEach(({ path, basePath }) => {
+  try {
+    const router = loadRouter(path);
+    app.use(basePath, router);
+    console.log(`Mounted routes for ${basePath}`);
+  } catch (err) {
+    console.error(`Failed to mount routes for ${basePath}:`, err);
+    process.exit(1);
   }
-
-  console.log('Mounting appointmentRoutes...');
-  if (typeof appointmentRoutes === 'function' && appointmentRoutes.stack) {
-    app.use('/api/appointments', appointmentRoutes);
-    console.log('appointmentRoutes mounted successfully');
-  } else {
-    throw new Error('appointmentRoutes is not a valid Express router');
-  }
-} catch (err) {
-  console.error('FATAL ERROR mounting routes:', err);
-  process.exit(1);
-}
+});
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
